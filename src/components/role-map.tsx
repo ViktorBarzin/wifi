@@ -41,17 +41,18 @@ export function RoleMap({ current }: { current?: Role | null }) {
 							className={`flex items-center gap-2 rounded-md px-1.5 py-1 text-sm ${here ? "bg-muted" : ""}`}
 						>
 							<span
-								className={`w-20 shrink-0 rounded-md border px-2 py-0.5 text-center font-mono text-xs ${here ? "border-foreground font-semibold" : ""}`}
+								className={`w-24 shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-center font-mono text-xs ${here ? "border-foreground font-semibold" : ""}`}
 							>
 								{role}
 							</span>
-							<span
+							<svg
 								aria-hidden="true"
-								className="flex w-6 shrink-0 items-center text-muted-foreground"
+								viewBox="0 0 24 8"
+								className="h-2 w-6 shrink-0 text-muted-foreground"
 							>
-								<span className="h-px flex-1 bg-current" />
-								<span className="-ml-0.5 text-xs leading-none">▶</span>
-							</span>
+								<path d="M0 4h20" stroke="currentColor" strokeWidth="1.25" />
+								<path d="M18 1l4 3-4 3z" fill="currentColor" />
+							</svg>
 							<span className="flex flex-wrap gap-1.5">
 								{places.length === 0 ? (
 									<span className="text-xs text-muted-foreground">
