@@ -4,7 +4,7 @@ The ordered steps to run this app on the homelab cluster without Cloud. On
 Cloud, `cloud new` does the repo and the deploy, and none of these steps
 apply: see AGENTS.md, "On Cloud".
 
-Below, `starter` stands for the new app's slug (a DNS label) and `Starter` for
+Below, `wifi` stands for the new app's slug (a DNS label) and `London Wi-Fi` for
 its display name; step 2 replaces both everywhere, this file included. Where
 the slug has dashes, the database name and role use underscores (`my-app`
 becomes `my_app`), and step 2 writes those too.
@@ -30,31 +30,31 @@ becomes `my_app`), and step 2 writes those too.
    `README.md`, this file and `bun.lock`. It runs once: it then deletes
    `scripts/rename.ts`, its test and the `rename` script. Commit the result.
 
-3. **Vault.** Seed `secret/starter` with:
+3. **Vault.** Seed `secret/wifi` with:
    - `better_auth_secret`: 32+ random bytes, e.g. `openssl rand -base64 48`
-   - `oidc_client_id`: `starter`
+   - `oidc_client_id`: `wifi`
    - `oidc_client_secret`: 64+ random characters
 
-   `vault kv put` creates `secret/starter`; `vault kv patch` adds or replaces
+   `vault kv put` creates `secret/wifi`; `vault kv patch` adds or replaces
    keys in it once it exists:
 
    ```sh
-   vault kv put secret/starter \
+   vault kv put secret/wifi \
      better_auth_secret="$(openssl rand -base64 48)" \
-     oidc_client_id=starter \
+     oidc_client_id=wifi \
      oidc_client_secret="$(openssl rand -hex 48)"
-   vault kv patch secret/starter oidc_client_secret="$(openssl rand -hex 48)"  # later, to rotate one key
+   vault kv patch secret/wifi oidc_client_secret="$(openssl rand -hex 48)"  # later, to rotate one key
    ```
 
 4. **Database.** In infra (details in its `docs/agents/new-app.md`), add one
    entry to each map:
-   - `stacks/dbaas/modules/dbaas/app_databases.tf`: `starter = {}` in
+   - `stacks/dbaas/modules/dbaas/app_databases.tf`: `wifi = {}` in
      `local.app_databases` (database and owner role).
    - `stacks/vault/app_db_roles.tf`: in `pg_app_roles`,
 
      ```hcl
-     starter = {
-       username          = "starter"
+     wifi = {
+       username          = "wifi"
        rotation_schedule = "0 10 * * WED"
        rotation_window   = 3600
      }
@@ -63,7 +63,7 @@ becomes `my_app`), and step 2 writes those too.
      A new role rotates once when it is created, which is harmless before the
      app has data.
 
-5. **Stack.** Create `infra/stacks/starter/` with `terragrunt.hcl` and
+5. **Stack.** Create `infra/stacks/wifi/` with `terragrunt.hcl` and
    `authentik.tf` copied from `stacks/tasks` (the `authentik` provider block
    with the token from `secret/authentik` `tf_api_token`, and the
    `data "authentik_user" "viktor"` lookup), and a `main.tf` with one call to
@@ -82,10 +82,10 @@ becomes `my_app`), and step 2 writes those too.
 
    module "app" {
      source          = "../../modules/kubernetes/tanstack_app"
-     name            = "starter"
-     display_name    = "Starter"
+     name            = "wifi"
+     display_name    = "London Wi-Fi"
      tier            = local.tiers.aux
-     image           = "ghcr.io/viktorbarzin/starter"
+     image           = "ghcr.io/viktorbarzin/wifi"
      image_tag       = var.image_tag
      postgresql_host = var.postgresql_host
      tls_secret_name = var.tls_secret_name
@@ -107,11 +107,11 @@ becomes `my_app`), and step 2 writes those too.
    this repo:
 
    ```sh
-   scripts/offinfra-onboard starter --clone <path-to-clone> --visibility public \
-     --namespace starter --deploy "starter=migrate,starter" --keep-workflows
+   scripts/offinfra-onboard wifi --clone <path-to-clone> --visibility public \
+     --namespace wifi --deploy "wifi=migrate,wifi" --keep-workflows
    ```
 
-   It creates the public GitHub repo `ViktorBarzin/starter`, the Forgejo push
+   It creates the public GitHub repo `ViktorBarzin/wifi`, the Forgejo push
    mirror to it (`sync_on_commit`), the `WOODPECKER_TOKEN`,
    `FORGEJO_GIT_TOKEN` and `SLACK_WEBHOOK` secrets, the Woodpecker
    registration and the `WOODPECKER_REPO_ID` repo variable that `build.yml`
@@ -125,26 +125,26 @@ becomes `my_app`), and step 2 writes those too.
    FJ_TOKEN=$(sed -n 's#^https://viktor:\([^@]*\)@.*#\1#p' ~/.git-credentials | head -1)
    fj() { curl -sf --resolve forgejo.viktorbarzin.me:443:10.0.20.203 \
      -H "Authorization: token $FJ_TOKEN" -H 'Content-Type: application/json' "$@"; }
-   fj -X PUT https://forgejo.viktorbarzin.me/api/v1/repos/viktor/starter/collaborators/renovate-bot \
+   fj -X PUT https://forgejo.viktorbarzin.me/api/v1/repos/viktor/wifi/collaborators/renovate-bot \
      -d '{"permission":"write"}'
-   fj -X PATCH https://forgejo.viktorbarzin.me/api/v1/repos/viktor/starter \
+   fj -X PATCH https://forgejo.viktorbarzin.me/api/v1/repos/viktor/wifi \
      -d '{"has_pull_requests":true,"allow_fast_forward_only_merge":true}'
    ```
 
-   Then add `{ repository: 'viktor/starter', baseBranchPatterns: ['master'] }`
+   Then add `{ repository: 'viktor/wifi', baseBranchPatterns: ['master'] }`
    to `repositories` in infra `stacks/renovate/files/config-apps.js`.
 
 8. **Push** to `master` on Forgejo. The mirror carries it to GitHub, Actions
-   tests and builds `ghcr.io/viktorbarzin/starter`, and Woodpecker sets the
+   tests and builds `ghcr.io/viktorbarzin/wifi`, and Woodpecker sets the
    image on the `migrate` init container and the app container.
 
 9. **Telemetry** (on by default; skip to opt out, or set
    `telemetry.enabled: false` in `src/app.config.ts`). Follow the infra
    runbook `docs/runbooks/product-analytics.md`, "Add an Instrumented app":
-   a write key in `secret/rybbit` `write_keys`, `starter` in
+   a write key in `secret/rybbit` `write_keys`, `wifi` in
    `local.analytics_apps` of `stacks/rybbit/event_pipeline.tf`, and a
-   GlitchTip project with its DSN in `secret/glitchtip` `dsn_starter`. Copy
-   both into `secret/starter` as `telemetry_write_key` and `sentry_dsn`, and
+   GlitchTip project with its DSN in `secret/glitchtip` `dsn_wifi`. Copy
+   both into `secret/wifi` as `telemetry_write_key` and `sentry_dsn`, and
    add to the `module "app"` block:
 
    ```hcl
@@ -157,7 +157,7 @@ becomes `my_app`), and step 2 writes those too.
    The other settings have defaults (AGENTS.md, "Telemetry and logs"). Until
    the write key is set the app sends nothing.
 
-10. **Check it live**: `homelab deploy wait starter/starter`, then sign in at
-    `https://starter.viktorbarzin.me`. As the seeded member and admin you see
+10. **Check it live**: `homelab deploy wait wifi/wifi`, then sign in at
+    `https://wifi.viktorbarzin.me`. As the seeded member and admin you see
     the list straight away; other people request access and you approve them
     at `/admin/requests`.

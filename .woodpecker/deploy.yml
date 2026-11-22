@@ -23,5 +23,5 @@ steps:
       # A block scalar: Woodpecker substitutes ${IMAGE_TAG} before parsing,
       # and on a push it is empty, which would break a plain scalar's YAML.
       - |
-        kubectl -n starter set image deployment/starter migrate=ghcr.io/viktorbarzin/starter:${IMAGE_TAG} starter=ghcr.io/viktorbarzin/starter:${IMAGE_TAG}
-        kubectl -n starter rollout status deployment/starter --timeout=300s
+        kubectl -n wifi set image deployment/wifi migrate=ghcr.io/viktorbarzin/wifi:${IMAGE_TAG} wifi=ghcr.io/viktorbarzin/wifi:${IMAGE_TAG}
+        kubectl -n wifi rollout status deployment/wifi --timeout=300s

@@ -1,5 +1,5 @@
 {
-	"name": "starter",
+	"name": "wifi",
 	"private": true,
 	"type": "module",
 	"packageManager": "bun@1.4.3",
@@ -12,15 +12,14 @@
 		"build:entrypoints": "bun build --target bun --outdir .output/entrypoints src/entrypoints/migrate.ts",
 		"start": "bun .output/server/index.mjs",
 		"migrate": "bun .output/entrypoints/migrate.js",
-		"test": "NODE_ENV=test bun test ./src ./scripts",
+		"test": "NODE_ENV=test bun test ./src",
 		"test:e2e": "playwright test",
 		"typecheck": "tsc --noEmit",
 		"check": "biome check",
 		"format": "biome check --write",
 		"db:generate": "drizzle-kit generate",
 		"db:studio": "drizzle-kit studio",
-		"intent": "bun node_modules/@tanstack/intent/dist/cli.mjs",
-		"rename": "bun scripts/rename.ts"
+		"intent": "bun node_modules/@tanstack/intent/dist/cli.mjs"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.1171.0",

@@ -1,4 +1,4 @@
-# Starter
+# London Wi-Fi
 
 A new app on the default app stack (ADR-0001): TanStack Start on Bun, Drizzle
 on the shared Postgres, Authentik sign-in through app-side OIDC, realtime over

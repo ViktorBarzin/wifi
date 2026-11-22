@@ -3,7 +3,7 @@ name: Build and Push
 # Off-infra build (infra ADR-0002; default stack in ADR-0001). GitHub-hosted
 # runners lint, test, build and push the image to GHCR. On master the image
 # also gets `latest`, the repo gets its next vX.Y.Z tag (svu), and the build
-# signals the Woodpecker deploy pipeline, which rolls Deployment `starter`.
+# signals the Woodpecker deploy pipeline, which rolls Deployment `wifi`.
 #
 # Committed on the FORGEJO side (the GitHub repo is a one-way mirror; commits
 # made on GitHub are overwritten by the next sync).
@@ -127,12 +127,12 @@ jobs:
           FORGEJO_GIT_TOKEN: ${{ secrets.FORGEJO_GIT_TOKEN }}
           # <owner>/<repo> on Forgejo, set by offinfra-onboard: viktor/<app>,
           # or the account of the person who owns the app.
-          FORGEJO_REPO: ${{ vars.FORGEJO_REPO || 'viktor/starter' }}
+          FORGEJO_REPO: ${{ vars.FORGEJO_REPO || 'viktor/wifi' }}
           NEXT: ${{ steps.svu.outputs.next }}
         run: |
           set +e
           git config user.email "ci@viktorbarzin.me"
-          git config user.name "starter-ci"
+          git config user.name "wifi-ci"
           git tag "$NEXT" 2>/dev/null
           git push "https://${FORGEJO_REPO%%/*}:${FORGEJO_GIT_TOKEN}@forgejo.viktorbarzin.me/${FORGEJO_REPO}.git" "$NEXT" && echo "pushed tag $NEXT to forgejo" || echo "tag push failed (non-blocking)"
           exit 0
@@ -156,16 +156,16 @@ jobs:
           build-args: |
             SERVICE_VERSION=${{ steps.meta.outputs.sha }}
           tags: |
-            ghcr.io/viktorbarzin/starter:${{ steps.meta.outputs.sha }}
-            ghcr.io/viktorbarzin/starter:latest
-          cache-from: type=gha,scope=starter
-          cache-to: type=gha,mode=max,scope=starter
+            ghcr.io/viktorbarzin/wifi:${{ steps.meta.outputs.sha }}
+            ghcr.io/viktorbarzin/wifi:latest
+          cache-from: type=gha,scope=wifi
+          cache-to: type=gha,mode=max,scope=wifi
       # Keep the newest ~10 versions on ghcr (latest rides the newest one).
       - name: ghcr retention (keep 10)
         uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
         continue-on-error: true
         with:
-          package-name: starter
+          package-name: wifi
           package-type: container
           min-versions-to-keep: 10
       # Signal Woodpecker (the GitHub mirror's registration) to run
@@ -194,5 +194,5 @@ jobs:
       - name: Slack notify
         run: |
           curl -sf -X POST -H 'Content-Type: application/json' \
-            -d "{\"text\":\":rotating_light: starter build FAILED: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            -d "{\"text\":\":rotating_light: wifi build FAILED: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
             "${{ secrets.SLACK_WEBHOOK }}" || true
