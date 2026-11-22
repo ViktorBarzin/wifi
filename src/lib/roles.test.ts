@@ -7,13 +7,14 @@ const storage = { member: true, admin: false };
 const stranger = { member: false, admin: false };
 
 describe("roles", () => {
-	test("the five roles; guest is no role", () => {
+	test("the six roles; guest is no role", () => {
 		expect([...ROLES]).toEqual([
 			"admin",
 			"storage",
 			"iot",
 			"infra-ha",
 			"infra-k8s",
+			"media",
 		]);
 		expect(isRole("iot")).toBe(true);
 		expect(isRole("guest")).toBe(false);

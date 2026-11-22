@@ -219,7 +219,8 @@ are, except where this section says otherwise.
 
 `wifi` holds the London Wi-Fi roles. Every device on the one shared-password
 Wi-Fi is a guest unless it has a role (`admin`, `storage`, `iot`, `infra-ha`,
-`infra-k8s`; `src/lib/roles.ts`). The London router (a GL.iNet Flint 2) keeps
+`infra-k8s`, `media`; `src/lib/roles.ts`). The router agent must know a role
+before this app sends it: it refuses a list with an unknown role. The London router (a GL.iNet Flint 2) keeps
 the roles in ipsets keyed by MAC and syncs them from this app. Design: infra
 `docs/plans/2026-11-22-london-network-roles-design.md`. It runs only on the
 infra path (infra `stacks/wifi`), never on Cloud: the router and the London

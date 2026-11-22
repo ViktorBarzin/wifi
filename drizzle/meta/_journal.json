@@ -36,6 +36,13 @@
       "when": 1795377153565,
       "tag": "0004_device_names",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795384734656,
+      "tag": "0005_media_role",
+      "breakpoints": true
     }
   ]
 }

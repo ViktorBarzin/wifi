@@ -8,6 +8,7 @@ export const ROLES = [
 	"iot",
 	"infra-ha",
 	"infra-k8s",
+	"media",
 ] as const;
 
 export type Role = (typeof ROLES)[number];

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."device_role" ADD VALUE 'media';
