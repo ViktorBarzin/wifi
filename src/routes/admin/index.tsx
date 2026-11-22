@@ -174,7 +174,9 @@ function AdminPage() {
 										<div className="font-mono text-xs">{device.mac}</div>
 										<div className="text-xs text-muted-foreground">
 											{device.ip}
-											{device.name && device.hostname
+											{device.name &&
+											device.hostname &&
+											device.hostname !== device.name
 												? `, calls itself ${device.hostname}`
 												: ""}
 											, last seen {formatSeen(device.lastSeen)}
