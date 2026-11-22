@@ -24,9 +24,12 @@ import {
 	connectionBudget,
 	isCloud,
 	realtimeEnabled,
+	routerPollTimeoutMs,
+	routerToken,
 	serviceInfo,
 	telemetrySettings,
 } from "./env.server";
+import { REQUEST_IDLE_S } from "./request-idle.server";
 
 const saved = { ...process.env };
 afterEach(() => {
@@ -66,6 +69,38 @@ describe("DEV_USER", () => {
 		expect(
 			await appAuth.resolveUser(new Request("https://app.example/x")),
 		).toBeNull();
+	});
+});
+
+describe("the router settings", () => {
+	test("ROUTER_TOKEN inline or from a file; unset is null", async () => {
+		setEnv({ ROUTER_TOKEN: undefined, ROUTER_TOKEN_FILE: undefined });
+		expect(routerToken()).toBeNull();
+		setEnv({ ROUTER_TOKEN: "inline-token" });
+		expect(routerToken()).toBe("inline-token");
+		const dir = await mkdtemp(join(tmpdir(), "wifi-env-"));
+		try {
+			await writeFile(join(dir, "token"), "file-token\n");
+			setEnv({
+				ROUTER_TOKEN: undefined,
+				ROUTER_TOKEN_FILE: join(dir, "token"),
+			});
+			expect(routerToken()).toBe("file-token");
+		} finally {
+			await rm(dir, { recursive: true });
+		}
+	});
+
+	test("the poll is held 50 s by default, under the request idle timeout", () => {
+		setEnv({ ROUTER_POLL_TIMEOUT_MS: undefined });
+		expect(routerPollTimeoutMs()).toBe(50_000);
+		expect(routerPollTimeoutMs()).toBeLessThan(REQUEST_IDLE_S * 1000);
+		setEnv({ ROUTER_POLL_TIMEOUT_MS: "1500" });
+		expect(routerPollTimeoutMs()).toBe(1500);
+		for (const bad of ["0", "-1", "1.5", "abc", "120001"]) {
+			setEnv({ ROUTER_POLL_TIMEOUT_MS: bad });
+			expect(() => routerPollTimeoutMs()).toThrow("ROUTER_POLL_TIMEOUT_MS");
+		}
 	});
 });
 

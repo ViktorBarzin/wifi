@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { REQUEST_IDLE_S, raiseIdleTimeout } from "./request-idle.server";
 
 function bunRequest(calls: [Request, number][]): Request {
-	const request = new Request("http://app.invalid/api/items");
+	const request = new Request("http://app.invalid/api/router/roles");
 	Object.defineProperty(request, "runtime", {
 		value: {
 			bun: {

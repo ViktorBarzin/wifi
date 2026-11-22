@@ -15,10 +15,11 @@ import { Route as PendingRouteImport } from './routes/pending'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminRequestsRouteImport } from './routes/admin/requests'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
-import { Route as ApiItemsRouteImport } from './routes/api/items'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAuthFinishRouteImport } from './routes/api/auth/finish'
 import { Route as ApiAuthStartRouteImport } from './routes/api/auth/start'
+import { Route as ApiRouterLeasesRouteImport } from './routes/api/router/leases'
+import { Route as ApiRouterRolesRouteImport } from './routes/api/router/roles'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -50,11 +51,6 @@ const ApiEventsRoute = ApiEventsRouteImport.update({
   path: '/api/events',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiItemsRoute = ApiItemsRouteImport.update({
-  id: '/api/items',
-  path: '/api/items',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -70,6 +66,16 @@ const ApiAuthStartRoute = ApiAuthStartRouteImport.update({
   path: '/api/auth/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRouterLeasesRoute = ApiRouterLeasesRouteImport.update({
+  id: '/api/router/leases',
+  path: '/api/router/leases',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRouterRolesRoute = ApiRouterRolesRouteImport.update({
+  id: '/api/router/roles',
+  path: '/api/router/roles',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -77,11 +83,12 @@ export interface FileRoutesByFullPath {
   '/pending': typeof PendingRoute
   '/admin/requests': typeof AdminRequestsRoute
   '/api/events': typeof ApiEventsRoute
-  '/api/items': typeof ApiItemsRoute
   '/admin/': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/auth/finish': typeof ApiAuthFinishRoute
   '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/router/leases': typeof ApiRouterLeasesRoute
+  '/api/router/roles': typeof ApiRouterRolesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -89,11 +96,12 @@ export interface FileRoutesByTo {
   '/pending': typeof PendingRoute
   '/admin/requests': typeof AdminRequestsRoute
   '/api/events': typeof ApiEventsRoute
-  '/api/items': typeof ApiItemsRoute
   '/admin': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/auth/finish': typeof ApiAuthFinishRoute
   '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/router/leases': typeof ApiRouterLeasesRoute
+  '/api/router/roles': typeof ApiRouterRolesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -102,11 +110,12 @@ export interface FileRoutesById {
   '/pending': typeof PendingRoute
   '/admin/requests': typeof AdminRequestsRoute
   '/api/events': typeof ApiEventsRoute
-  '/api/items': typeof ApiItemsRoute
   '/admin/': typeof AdminIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/auth/finish': typeof ApiAuthFinishRoute
   '/api/auth/start': typeof ApiAuthStartRoute
+  '/api/router/leases': typeof ApiRouterLeasesRoute
+  '/api/router/roles': typeof ApiRouterRolesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -116,11 +125,12 @@ export interface FileRouteTypes {
     | '/pending'
     | '/admin/requests'
     | '/api/events'
-    | '/api/items'
     | '/admin/'
     | '/api/auth/$'
     | '/api/auth/finish'
     | '/api/auth/start'
+    | '/api/router/leases'
+    | '/api/router/roles'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,11 +138,12 @@ export interface FileRouteTypes {
     | '/pending'
     | '/admin/requests'
     | '/api/events'
-    | '/api/items'
     | '/admin'
     | '/api/auth/$'
     | '/api/auth/finish'
     | '/api/auth/start'
+    | '/api/router/leases'
+    | '/api/router/roles'
   id:
     | '__root__'
     | '/'
@@ -140,11 +151,12 @@ export interface FileRouteTypes {
     | '/pending'
     | '/admin/requests'
     | '/api/events'
-    | '/api/items'
     | '/admin/'
     | '/api/auth/$'
     | '/api/auth/finish'
     | '/api/auth/start'
+    | '/api/router/leases'
+    | '/api/router/roles'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -153,11 +165,12 @@ export interface RootRouteChildren {
   PendingRoute: typeof PendingRoute
   AdminRequestsRoute: typeof AdminRequestsRoute
   ApiEventsRoute: typeof ApiEventsRoute
-  ApiItemsRoute: typeof ApiItemsRoute
   AdminIndexRoute: typeof AdminIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiAuthFinishRoute: typeof ApiAuthFinishRoute
   ApiAuthStartRoute: typeof ApiAuthStartRoute
+  ApiRouterLeasesRoute: typeof ApiRouterLeasesRoute
+  ApiRouterRolesRoute: typeof ApiRouterRolesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -204,13 +217,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/items': {
-      id: '/api/items'
-      path: '/api/items'
-      fullPath: '/api/items'
-      preLoaderRoute: typeof ApiItemsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -232,6 +238,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthStartRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/router/leases': {
+      id: '/api/router/leases'
+      path: '/api/router/leases'
+      fullPath: '/api/router/leases'
+      preLoaderRoute: typeof ApiRouterLeasesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/router/roles': {
+      id: '/api/router/roles'
+      path: '/api/router/roles'
+      fullPath: '/api/router/roles'
+      preLoaderRoute: typeof ApiRouterRolesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -241,11 +261,12 @@ const rootRouteChildren: RootRouteChildren = {
   PendingRoute: PendingRoute,
   AdminRequestsRoute: AdminRequestsRoute,
   ApiEventsRoute: ApiEventsRoute,
-  ApiItemsRoute: ApiItemsRoute,
   AdminIndexRoute: AdminIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiAuthFinishRoute: ApiAuthFinishRoute,
   ApiAuthStartRoute: ApiAuthStartRoute,
+  ApiRouterLeasesRoute: ApiRouterLeasesRoute,
+  ApiRouterRolesRoute: ApiRouterRolesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

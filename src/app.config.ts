@@ -10,7 +10,7 @@ export const app = {
 	adminsGroup: "London Wi-Fi Admins",
 	agentsGroup: "London Wi-Fi Agents",
 	/** The Postgres NOTIFY channel for realtime events. */
-	realtimeChannel: "wifi_events",
+	realtimeChannel: "wifi_roles",
 	/** How often lists refetch while realtime is off (a connection budget of 1, e.g. Cloud's nano). */
 	pollMs: 10_000,
 	/**

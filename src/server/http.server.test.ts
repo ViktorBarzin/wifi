@@ -2,7 +2,8 @@
  * The built server over HTTP (`bun run build` first) with a real Postgres
  * (TEST_DATABASE_URL) and the mock Authentik from @viktorbarzin/auth/testing:
  * health and metrics ports, the auth wall, CSRF, the sign-in flow, request +
- * approve, the guest retry, and a prompt exit on SIGTERM. The full approval
+ * approve, the guest retry, the router API, the device page and a prompt
+ * exit on SIGTERM. The full approval
  * through the admin page runs in e2e/auth.spec.ts.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -19,6 +20,7 @@ import {
 import { migratedTestDatabase } from "@viktorbarzin/pg/testing";
 
 import { app } from "#/app.config";
+import { sha256Hex } from "./wifi.server";
 
 const APP_DIR = resolve(import.meta.dir, "../..");
 const ENTRY = resolve(APP_DIR, ".output/server/index.mjs");
@@ -28,6 +30,10 @@ const ready = Boolean(adminUrl) && existsSync(ENTRY);
 let database: Awaited<ReturnType<typeof migratedTestDatabase>>;
 let mock: MockAuthentik;
 let server: BuiltServer;
+
+const ROUTER_TOKEN = "router-token-0123456789abcdef0123456789";
+const ROUTER = { authorization: `Bearer ${ROUTER_TOKEN}` };
+const POLL_MS = 1_500;
 
 beforeAll(async () => {
 	if (!ready) return;
@@ -54,6 +60,8 @@ beforeAll(async () => {
 			AUTHENTIK_API_URL: mock.apiUrl,
 			AUTHENTIK_READER_TOKEN: mock.readerToken,
 			AUTHENTIK_APPROVER_TOKEN: mock.approverToken,
+			ROUTER_TOKEN,
+			ROUTER_POLL_TIMEOUT_MS: String(POLL_MS),
 		},
 		origin: (port) => ({ PUBLIC_ORIGINS: `http://127.0.0.1:${port}` }),
 	});
@@ -85,9 +93,41 @@ function get(
 	});
 }
 
-/** The href of the page's "Sign in" link, or null when there is none. */
+/** The href of the page's sign-in link, or null when there is none. */
 function signInHref(html: string): string | null {
-	return /<a\b[^>]*\bhref="([^"]*)"[^>]*>Sign in<\/a>/.exec(html)?.[1] ?? null;
+	return (
+		/<a\b[^>]*\bhref="([^"]*)"[^>]*>Sign in to use your role on this device<\/a>/.exec(
+			html,
+		)?.[1] ?? null
+	);
+}
+
+function putLeases(body: string, headers: Record<string, string> = ROUTER) {
+	return fetch(`${server.origin}/api/router/leases`, {
+		method: "PUT",
+		headers: { "content-type": "text/plain", ...headers },
+		body,
+	});
+}
+
+function pollRoles(
+	since: number,
+	leases: string,
+	headers: Record<string, string> = ROUTER,
+) {
+	return get(
+		`/api/router/roles?since=${since}&leases=${leases}`,
+		null,
+		headers,
+	);
+}
+
+/** The events stream, which needs a signed-in member. */
+function events(jar: CookieJar | null, headers: Record<string, string> = {}) {
+	return get("/api/events", jar, {
+		"sec-fetch-site": "same-origin",
+		...headers,
+	});
 }
 
 describe.skipIf(!ready)("the built server", () => {
@@ -136,15 +176,96 @@ describe.skipIf(!ready)("the built server", () => {
 		}
 	});
 
-	test("/api/items is 401 without a session, and a forged forward-auth header changes nothing", async () => {
+	test("/api/events is 401 without a session, and a forged forward-auth header changes nothing", async () => {
 		for (const headers of [{}, { "x-authentik-username": "admin" }] as Record<
 			string,
 			string
 		>[]) {
-			const res = await get("/api/items", null, headers);
+			const res = await events(null, headers);
 			expect(res.status).toBe(401);
 			expect((await res.json()).error.code).toBe("unauthorized");
 		}
+	});
+
+	test("the router API is 401 with no body for a missing or wrong token", async () => {
+		for (const headers of [{}, { authorization: "Bearer wrong" }] as Record<
+			string,
+			string
+		>[]) {
+			const poll = await pollRoles(0, "0".repeat(64), headers);
+			expect(poll.status).toBe(401);
+			expect(await poll.text()).toBe("");
+			const put = await putLeases(
+				"aa:00:00:00:01:01 192.168.8.70 x\n",
+				headers,
+			);
+			expect(put.status).toBe(401);
+			expect(await put.text()).toBe("");
+		}
+	});
+
+	test("lease PUT: 204 and stored; a bad line is 400; the poll says whether it needs the table", async () => {
+		const table =
+			"aa:00:00:00:01:01 192.168.8.70 laptop\naa:00:00:00:01:02 192.168.8.71 *\n";
+		const put = await putLeases(table);
+		expect(put.status).toBe(204);
+		const rows =
+			await database.client`select mac, ip, hostname from devices where mac like 'aa:00:00:00:01:%' order by mac`;
+		expect(rows).toEqual([
+			{ mac: "aa:00:00:00:01:01", ip: "192.168.8.70", hostname: "laptop" },
+			{ mac: "aa:00:00:00:01:02", ip: "192.168.8.71", hostname: null },
+		]);
+		const bad = await putLeases("aa:00:00:00:01:03 192.168.8.72 x\nnonsense\n");
+		expect(bad.status).toBe(400);
+		expect(await bad.text()).toContain("line 2");
+
+		const [{ roles_version: version }] =
+			await database.client`select roles_version from sync_state`;
+		const started = Date.now();
+		const same = await pollRoles(
+			Number(version),
+			sha256Hex(new TextEncoder().encode(table)),
+		);
+		expect(same.status).toBe(200);
+		expect(same.headers.get("content-type")).toContain("text/plain");
+		expect(await same.text()).toBe(`unchanged ${version}\nleases ok\n`);
+		expect(Date.now() - started).toBeGreaterThanOrEqual(POLL_MS - 100);
+		const other = await pollRoles(Number(version), "f".repeat(64));
+		expect(await other.text()).toBe(`unchanged ${version}\nleases needed\n`);
+		const [{ last_router_poll: polled }] =
+			await database.client`select last_router_poll from sync_state`;
+		expect(Date.now() - polled.getTime()).toBeLessThan(10_000);
+	});
+
+	test("the poll answers at once with the full list when the router is behind", async () => {
+		const res = await pollRoles(999_999, "0".repeat(64));
+		const [{ roles_version: version }] =
+			await database.client`select roles_version from sync_state`;
+		expect((await res.text()).split("\n").slice(0, 2)).toEqual([
+			`version ${version}`,
+			"leases needed",
+		]);
+	});
+
+	test("a malformed poll query is 400", async () => {
+		for (const query of [
+			`since=x&leases=${"0".repeat(64)}`,
+			"since=1&leases=abc",
+			"since=1",
+		]) {
+			const res = await get(`/api/router/roles?${query}`, null, ROUTER);
+			expect(res.status).toBe(400);
+		}
+	});
+
+	test("/metrics has the router's last poll time and the role change counter", async () => {
+		await pollRoles(999_999, "0".repeat(64));
+		const text = await (await fetch(`${server.metricsOrigin}/metrics`)).text();
+		const seconds = Number(
+			/^wifi_router_last_poll_timestamp_seconds (\S+)$/m.exec(text)?.[1],
+		);
+		expect(Math.abs(Date.now() / 1000 - seconds)).toBeLessThan(30);
+		expect(text).toMatch(/^wifi_role_changes_total \d+$/m);
 	});
 
 	test("the home page shows a signed-out visitor a sign-in link, with 200", async () => {
@@ -156,11 +277,26 @@ describe.skipIf(!ready)("the built server", () => {
 		expect(html).not.toContain('data-testid="username"');
 	});
 
+	test("the home page finds this device by X-Real-IP, and explains when it cannot", async () => {
+		await putLeases("aa:00:00:00:02:01 192.168.8.80 tv\n");
+		await database.client`insert into device_roles (mac, role, set_by) values ('aa:00:00:00:02:01', 'iot', 'test')`;
+		const html = await (
+			await get("/", null, { "x-real-ip": "192.168.8.80" })
+		).text();
+		expect(html).toContain("aa:00:00:00:02:01");
+		expect(html).toMatch(/data-testid="device-role"[^>]*>iot</);
+		const away = await (
+			await get("/", null, { "x-real-ip": "10.9.9.9" })
+		).text();
+		expect(away).toContain('data-testid="device-unknown"');
+		expect(away).toContain("London Wi-Fi");
+	});
+
 	test("pages and redirects refuse to be framed", async () => {
 		for (const path of [
 			"/pending",
 			"/healthz",
-			"/api/items",
+			"/api/router/roles",
 			"/api/auth/finish?return=/",
 		]) {
 			const res = await get(path, null);
@@ -172,9 +308,9 @@ describe.skipIf(!ready)("the built server", () => {
 	});
 
 	test("a cross-origin POST is refused before it reaches a handler", async () => {
-		for (const path of ["/_serverFn/anything", "/api/items"]) {
+		for (const path of ["/_serverFn/anything", "/api/router/leases"]) {
 			const res = await fetch(`${server.origin}${path}`, {
-				method: "POST",
+				method: "PUT",
 				headers: {
 					origin: "https://evil.example",
 					cookie: `__Host-${app.slug}.session_token=x`,
@@ -196,16 +332,16 @@ describe.skipIf(!ready)("the built server", () => {
 		expect(session?.toLowerCase()).toContain("httponly");
 		expect(session?.toLowerCase()).not.toContain("domain=");
 		expect(await response.text()).toContain("member@example.com");
-		const items = await get("/api/items", jar);
-		expect(items.status).toBe(200);
-		expect(await items.json()).toEqual({ items: [] });
+		const stream = await events(jar);
+		expect(stream.status).toBe(200);
+		await stream.body?.cancel();
 	});
 
 	test("a non-member gets 403 access_pending and an access request; approval lets them in", async () => {
 		const user = mock.addUser({ username: "stranger@example.com", groups: [] });
 		const { jar, hops } = await signIn("stranger@example.com");
-		expect(hops.at(-1)?.url).toBe(`${server.origin}/pending`);
-		const res = await get("/api/items", jar);
+		expect(hops.at(-1)?.url).toBe(`${server.origin}/`);
+		const res = await events(jar);
 		expect(res.status).toBe(403);
 		expect((await res.json()).error.code).toBe("access_pending");
 		const rows =
@@ -216,10 +352,13 @@ describe.skipIf(!ready)("the built server", () => {
 		// the admin page). The next re-check lets the person in.
 		user.groups.push(app.usersGroup);
 		await database.client`update member_checks set checked_at = now() - interval '16 minutes' where sub = ${user.uid}`;
-		expect((await get("/api/items", jar)).status).toBe(200);
+		const stream = await events(jar);
+		expect(stream.status).toBe(200);
+		await stream.body?.cancel();
 	});
 
-	test("the admin page is for the admins group, with a link to access requests", async () => {
+	test("the admin page is for the admins group: every device, and a link to access requests", async () => {
+		await putLeases("aa:00:00:00:03:01 192.168.8.90 printer\n");
 		mock.addUser({ username: "chief@example.com", groups: [app.adminsGroup] });
 		const admin = await signIn(
 			"chief@example.com",
@@ -228,6 +367,7 @@ describe.skipIf(!ready)("the built server", () => {
 		expect(admin.hops.at(-1)?.url).toBe(`${server.origin}/admin`);
 		const html = await admin.response.text();
 		expect(html).toContain('data-testid="admin-home"');
+		expect(html).toContain('data-mac="aa:00:00:00:03:01"');
 		expect(html).toContain('href="/admin/requests"');
 		mock.addUser({ username: "worker@example.com", groups: [app.usersGroup] });
 		const member = await signIn(
@@ -237,9 +377,10 @@ describe.skipIf(!ready)("the built server", () => {
 		const refused = await member.response.text();
 		expect(refused).toContain("admins only");
 		expect(refused).not.toContain('data-testid="admin-home"');
+		expect(refused).not.toContain("aa:00:00:00:03:01");
 	});
 
-	test("bearer tokens work for /api/items, and a bad one does not fall back to the cookie", async () => {
+	test("bearer tokens work for /api/events, and a bad one does not fall back to the cookie", async () => {
 		const user = mock.addUser({
 			username: "cli@example.com",
 			groups: [app.usersGroup],
@@ -249,18 +390,12 @@ describe.skipIf(!ready)("the built server", () => {
 			preferred_username: user.username,
 			groups: user.groups,
 		});
-		const ok = await get("/api/items?limit=5", null, {
-			authorization: `Bearer ${token}`,
-		});
+		const ok = await events(null, { authorization: `Bearer ${token}` });
 		expect(ok.status).toBe(200);
-		const bad = await get("/api/items?limit=0", null, {
-			authorization: `Bearer ${token}`,
-		});
-		expect(bad.status).toBe(422);
+		await ok.body?.cancel();
 		const { jar } = await signIn("cli@example.com");
 		expect(
-			(await get("/api/items", jar, { authorization: "Bearer not-a-jwt" }))
-				.status,
+			(await events(jar, { authorization: "Bearer not-a-jwt" })).status,
 		).toBe(401);
 	});
 

@@ -33,14 +33,37 @@ export function collectErrors(page: Page): string[] {
 	return errors;
 }
 
+/** A device the router reported. */
+export async function addDevice(
+	mac: string,
+	ip: string,
+	hostname: string,
+): Promise<void> {
+	await call("/device", { mac, ip, hostname });
+}
+
+/**
+ * A fresh browser context whose requests come from `ip`, as the London
+ * proxy says in X-Real-IP; no address when `ip` is null.
+ */
+export async function pageFrom(
+	browser: Browser,
+	ip: string | null,
+): Promise<Page> {
+	const context = await browser.newContext(
+		ip === null ? {} : { extraHTTPHeaders: { "x-real-ip": ip } },
+	);
+	return context.newPage();
+}
+
 /** A fresh browser context signed in as `username` through the mock provider. */
 export async function signedInPage(
 	browser: Browser,
 	username: string,
 	path = "/",
+	ip: string | null = null,
 ): Promise<Page> {
-	const context = await browser.newContext();
-	const page = await context.newPage();
+	const page = await pageFrom(browser, ip);
 	await call("/login-as", { username });
 	await page.goto(`/api/auth/start?return=${encodeURIComponent(path)}`);
 	return page;

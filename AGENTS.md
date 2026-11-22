@@ -215,50 +215,40 @@ are, except where this section says otherwise.
 <!-- Cloud replaces this block with this App's facts. -->
 <!-- cloud:end -->
 
-## Replacing the example
+## This app
 
-The template ships an example, `items`: each person's own list on the home
-page, with its "New item" field, `src/server/items.functions.ts` and `items.server.ts`, the
-`/api/items` route, the `items` table and `itemKeys` in
-`src/lib/query-keys.ts`. Replace it with the app's own data, but keep the
-tests that check the plumbing passing, pointed at the new code:
+`wifi` holds the London Wi-Fi roles. Every device on the one shared-password
+Wi-Fi is a guest unless it has a role (`admin`, `storage`, `iot`, `infra-ha`,
+`infra-k8s`; `src/lib/roles.ts`). The London router (a GL.iNet Flint 2) keeps
+the roles in ipsets keyed by MAC and syncs them from this app. Design: infra
+`docs/plans/2026-11-22-london-network-roles-design.md`. It runs only on the
+infra path (infra `stacks/wifi`), never on Cloud: the router and the London
+proxy reach it there, so the template's Cloud-mode tests are removed.
 
-- `e2e/auth.spec.ts` (sign-in, access requests), `e2e/realtime.spec.ts`
-  (fan-out to another tab, the resync after a missed event) and
-  `e2e/cloud.spec.ts` (cloud mode) drive the home page through the "New
-  item" label and the `items` and `no-items` test ids. Give the new main
-  page a label and test ids of its own and use them there. These tests
-  expect a fresh user to see an empty list; for shared data, wait for the
-  list to finish loading instead (a test id on the list's container, which
-  is there whether it is empty or not), since other tests' rows are there.
-- `/silent-item` in `e2e/stack.ts` writes a row behind the app's back for
-  the resync test. Make it insert into the new table.
-- `src/server/http.server.test.ts`, `cloud.server.test.ts` and
-  `cloud-realtime.server.test.ts` call `/api/items` to check the 401 and
-  403 paths, CSRF, framing, bearer tokens and the connection pool. Point
-  them at an `/api` route of the new app, and change `known` in
-  `src/start.ts` to list it.
-- Then delete `/api/items`, `items.functions.ts`, `items.server.ts`,
-  `items.server.test.ts` and `itemKeys`, so no dead example is left.
-- Migrations, in two steps. First add the new table to `schema.server.ts`
-  and run `bun run db:generate`: that writes its `CREATE TABLE` migration.
-  Only then drop the `items` table and run `bun run db:generate` again for
-  the `DROP TABLE` migration. With an add and a drop in one generate,
-  drizzle-kit asks whether the new table renames the old one; with no
-  terminal (an agent's shell) that prompt crashes, and drizzle-kit has no
-  flag to answer it. Under the additive rule (Database), push the drop after
-  the new version runs, or with it while the app has no users yet.
-
-**Shared data.** The example is per person: `listItems` filters on
-`ownerSub`, and `addItem` publishes to the writer's own topic. For a list
-every member sees (a family's shopping list), leave the owner filter out and
-publish to `null`, which reaches every open stream (see Realtime). Published
-to `user.sub`, other members' tabs never see the write while realtime is
-on, because lists then do not poll. "Every member" means everyone who gets
-past sign-in: on a private App, the people on its allow list; on a public
-App, anyone with a homelab account. Keep family-only data in a private App.
-
-Run the full line in "Test locally first" before the push.
+- **Tables** (`schema.server.ts`): `devices` (from the router's lease table,
+  never deleted), `device_roles` (no row: guest) and the one-row
+  `sync_state` (`roles_version`, `leases_hash`, `last_router_poll`).
+- **Role writes** (`setRole` in `wifi.server.ts`) bump `roles_version` and
+  publish on the realtime channel `wifi_roles` in the same transaction.
+- **Router API** (text/plain, `Authorization: Bearer $ROUTER_TOKEN`, 401
+  with no body otherwise): `GET /api/router/roles?since=<int>&leases=<sha256>`
+  is a long poll held up to `ROUTER_POLL_TIMEOUT_MS` (50 s). It answers at
+  once when `roles_version` differs from `since`, else when a role write's
+  NOTIFY arrives on the pod's one LISTEN connection (`router.server.ts`).
+  Body: `version <N>` plus `<mac> <role>` lines sorted by MAC, or
+  `unchanged <N>`; then `leases needed` or `leases ok`. Every line ends in
+  `\n`. `PUT /api/router/leases` takes `<mac> <ip> <hostname-or-*>` lines,
+  upserts `devices`, stores the body's SHA-256 and answers 204, or 400 with
+  the first bad line.
+- **Pages**: `/` finds this device by `X-Real-IP` (the London proxy and
+  Traefik both overwrite it) and lets a signed-in person give it their role
+  (admins group: `admin`, users group: `storage`) or make it a guest
+  (`assignOwnDevice`). `/admin` lists every device with a role select;
+  admins only. `/admin/requests` is the template's.
+- **Metrics**: `wifi_router_last_poll_timestamp_seconds` (read from
+  `sync_state` at scrape time) and `wifi_role_changes_total`.
+- **Env** beyond the template's: `ROUTER_TOKEN` (or `ROUTER_TOKEN_FILE`),
+  and `ROUTER_POLL_TIMEOUT_MS` (optional; tests set it short).
 
 ## Load the TanStack skills before you write Start or Router code
 
@@ -364,7 +354,7 @@ To opt out for good, set `telemetry.enabled: false` in `src/app.config.ts`.
 - Product events are `noun.past_verb` with snake_case property keys:
   `track("item.created", { item_id })` from `@viktorbarzin/telemetry/browser`
   in components, or `track({ event, properties, userId })` from
-  `@viktorbarzin/telemetry/server` in server code (see `items.functions.ts`).
+  `@viktorbarzin/telemetry/server` in server code.
   Both drop events the pipeline would reject; the server logs why.
 - Sign-in reloads the page, and `components/telemetry.tsx` then identifies
   the person by their `sub`. Call `reset()` from the browser entry on

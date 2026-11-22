@@ -1,9 +1,11 @@
 # London Wi-Fi
 
-A new app on the default app stack (ADR-0001): TanStack Start on Bun, Drizzle
-on the shared Postgres, Authentik sign-in through app-side OIDC, realtime over
-LISTEN/NOTIFY and SSE. The example domain is a list of items, each person's
-own; AGENTS.md, "Replacing the example", says how to swap in your own data.
+The London Wi-Fi role manager: which devices on the London Wi-Fi have a role
+(admin, storage, iot, infra-ha, infra-k8s) and which are guests. The London
+router syncs the roles from it; a person signs in on a device to give it
+their role. AGENTS.md, "This app", has the details. Built on the default app
+stack (ADR-0001): TanStack Start on Bun, Drizzle on the shared Postgres,
+Authentik sign-in through app-side OIDC, realtime over LISTEN/NOTIFY and SSE.
 
 ## On Cloud
 

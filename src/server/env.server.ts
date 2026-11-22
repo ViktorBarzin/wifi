@@ -187,6 +187,29 @@ export function cloudAuthConfig(): CloudAuthConfig {
 	};
 }
 
+/** ROUTER_TOKEN: the London router's bearer token; null when unset (every router call is then 401). */
+export function routerToken(): string | null {
+	return secret("ROUTER_TOKEN");
+}
+
+/** How long the router's role poll is held without a change. */
+export const ROUTER_POLL_TIMEOUT_MS = 50_000;
+
+/**
+ * ROUTER_POLL_TIMEOUT_MS (tests set it short), default 50 s. At most 120 s,
+ * well under the 255 s idle timeout every request gets (request-idle.server.ts).
+ */
+export function routerPollTimeoutMs(): number {
+	const raw = env("ROUTER_POLL_TIMEOUT_MS");
+	if (raw === null) return ROUTER_POLL_TIMEOUT_MS;
+	const ms = Number(raw);
+	if (!Number.isInteger(ms) || ms < 1 || ms > 120_000)
+		throw new Error(
+			`ROUTER_POLL_TIMEOUT_MS must be a whole number from 1 to 120000 (got "${raw}")`,
+		);
+	return ms;
+}
+
 export function metricsPort(): number | null {
 	return parseMetricsPort(runtimeEnv.METRICS_PORT);
 }

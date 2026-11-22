@@ -7,7 +7,8 @@
  *   deployment.environment.name) on every line;
  * - server telemetry starts when a write key is configured: product events
  *   to the event pipeline, errors to GlitchTip with a DSN;
- * - /metrics is served on METRICS_PORT, which the ingress does not route;
+ * - /metrics is served on METRICS_PORT, which the ingress does not route,
+ *   with the app's own wifi_* metrics registered at boot;
  * - the realtime LISTEN connection opens at boot, so its gauges mean
  *   something before the first SSE subscriber, unless the connection budget
  *   turns realtime off;
@@ -36,6 +37,7 @@ import {
 	serviceInfo,
 	telemetrySettings,
 } from "./env.server";
+import { wifiMetrics } from "./metrics.server";
 import { realtime } from "./realtime.server";
 
 export default definePlugin(() => {
@@ -56,6 +58,7 @@ export default definePlugin(() => {
 			sentry: Sentry,
 		});
 	const metrics = startMetricsServer({ port: metricsPort() });
+	if (databaseConfigured()) wifiMetrics();
 	if (databaseConfigured() && realtimeEnabled())
 		void realtime.start().catch(() => {});
 	installShutdown({

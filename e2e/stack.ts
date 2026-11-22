@@ -87,11 +87,16 @@ const control = Bun.serve({
 			mock.loginAs = String(body.username);
 			return Response.json({ ok: true });
 		}
-		if (pathname === "/silent-item") {
-			// A row written without NOTIFY: only a resync can show it.
-			const user = mock.users.get(String(body.username));
-			if (!user) return new Response("no such user", { status: 404 });
-			await database.client`insert into items (owner_sub, title) values (${user.uid}, ${String(body.title)})`;
+		if (pathname === "/device") {
+			// A device the router reported, as a lease PUT would store it.
+			await database.client`
+				insert into devices (mac, ip, hostname) values (${String(body.mac)}, ${String(body.ip)}, ${String(body.hostname)})
+				on conflict (mac) do update set ip = excluded.ip, hostname = excluded.hostname, last_seen = now()`;
+			return Response.json({ ok: true });
+		}
+		if (pathname === "/silent-role") {
+			// A role written without NOTIFY: only a resync can show it.
+			await database.client`insert into device_roles (mac, role, set_by) values (${String(body.mac)}, ${String(body.role)}, 'e2e')`;
 			return Response.json({ ok: true });
 		}
 		if (pathname === "/kill-listen") {
