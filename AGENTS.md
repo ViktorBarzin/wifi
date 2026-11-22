@@ -253,7 +253,11 @@ proxy reach it there, so the template's Cloud-mode tests are removed.
   Traefik both overwrite it) and lets a signed-in person give it their role
   (admins group: `admin`, users group: `storage`) or make it a guest
   (`assignOwnDevice`). `/admin` lists every device with a role select
-  and a name and fixed-address form; admins only. `/admin/requests` is the template's.
+  and a name and fixed-address form; admins only. `/admin/requests` is the
+  template's. Both `/` and `/admin` show the role map
+  (`src/components/role-map.tsx`): what each role reaches, from `ROLE_ACCESS`
+  in `src/lib/roles.ts`. The router's rules are the truth (infra
+  `scripts/london-flint/london-roles.sh`, `firewall()`); change both together.
 - **Metrics**: `wifi_router_last_poll_timestamp_seconds` (read from
   `sync_state` at scrape time) and `wifi_role_changes_total`.
 - **Env** beyond the template's: `ROUTER_TOKEN` (or `ROUTER_TOKEN_FILE`),
