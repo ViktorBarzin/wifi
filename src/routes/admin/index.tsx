@@ -5,6 +5,7 @@ import { useRealtimeInvalidation } from "@viktorbarzin/realtime/react";
 import { useState } from "react";
 
 import { app } from "#/app.config";
+import { RoleMap } from "#/components/role-map";
 import { deviceKeys } from "#/lib/query-keys";
 import { isRole, ROLES, type Role } from "#/lib/roles";
 import { getAccessStatus, getAdminOverview } from "#/server/access.functions";
@@ -141,6 +142,7 @@ function AdminPage() {
 				role is a guest. A name becomes name.viktorbarzin.lan; a fixed address
 				is one the router always gives that device.
 			</p>
+			<RoleMap />
 			{set.isError ? (
 				<p role="alert" className="text-sm text-destructive">
 					Could not change the role: {set.error.message}

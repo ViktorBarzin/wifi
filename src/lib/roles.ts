@@ -36,3 +36,36 @@ export function mayAssignOwn(who: Who, role: Role | null): boolean {
 	if (own === null) return false;
 	return role === null || role === own;
 }
+
+/**
+ * What each role reaches in Sofia, in plain words, for the role map. The
+ * router's rules are the truth (infra scripts/london-flint/london-roles.sh,
+ * firewall()); change both together.
+ */
+export const ROLE_ACCESS: Record<Role | "guest", readonly string[]> = {
+	admin: ["all of Sofia"],
+	"infra-k8s": ["the Kubernetes network"],
+	"infra-ha": ["NAS backups", "journal upload", "vacuum camera"],
+	media: ["the cluster's web services"],
+	storage: ["the file share"],
+	iot: [],
+	guest: [],
+};
+
+/** What every device on the London Wi-Fi reaches, whatever its role. */
+export const EVERYONE_REACHES = [
+	"the internet",
+	"devices in the flat",
+	"this page",
+] as const;
+
+/** The roles from most access to least, guest last. */
+export const ROLES_BY_ACCESS: readonly (Role | "guest")[] = [
+	"admin",
+	"infra-k8s",
+	"infra-ha",
+	"media",
+	"storage",
+	"iot",
+	"guest",
+];

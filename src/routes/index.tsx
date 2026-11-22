@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 
 import { app } from "#/app.config";
+import { RoleMap } from "#/components/role-map";
 import { Button } from "#/components/ui/button";
 import { type Role, roleOf } from "#/lib/roles";
 import { getAccessStatus, type PageAccess } from "#/server/access.functions";
@@ -78,6 +79,7 @@ function Home() {
 					</a>
 				</p>
 			) : null}
+			<RoleMap current={device ? device.role : undefined} />
 			{status.admin ? (
 				<a className="text-sm underline" href="/admin">
 					All devices

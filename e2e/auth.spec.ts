@@ -25,6 +25,9 @@ test("a signed-out visitor sees this device and a sign-in link", async ({
 	).toBeVisible();
 	await expect(page.getByTestId("this-device")).toContainText("visitor-phone");
 	await expect(page.getByTestId("device-role")).toHaveText("guest");
+	await expect(
+		page.locator('[data-testid="role-row"][aria-current="true"]'),
+	).toHaveAttribute("data-role", "guest");
 	const signIn = page.getByRole("link", {
 		name: "Sign in to use your role on this device",
 	});
