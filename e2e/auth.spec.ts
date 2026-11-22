@@ -157,3 +157,33 @@ test("an admin sets any device's role from the device table", async ({
 	);
 	expect(errors).toEqual([]);
 });
+
+test("an admin names a device, fixes its address, and sees a clash refused", async ({
+	browser,
+}) => {
+	await addDevice("aa:00:00:00:10:07", "192.168.8.107", "Watch");
+	await addDevice("aa:00:00:00:10:08", "192.168.8.108", "*");
+	await addUser("namer@example.com", [app.adminsGroup]);
+	const page = await signedInPage(browser, "namer@example.com", "/admin");
+	const errors = collectErrors(page);
+	const row = page.locator('[data-mac="aa:00:00:00:10:07"]');
+	await page.getByLabel("Name of aa:00:00:00:10:07").fill("watch-viktor");
+	await page
+		.getByLabel("Fixed address of aa:00:00:00:10:07")
+		.fill("192.168.8.107");
+	await row.getByRole("button", { name: "Save" }).click();
+	await expect(row).toContainText("calls itself Watch");
+	await page.reload();
+	await expect(page.getByLabel("Name of aa:00:00:00:10:07")).toHaveValue(
+		"watch-viktor",
+	);
+	await expect(
+		page.getByLabel("Fixed address of aa:00:00:00:10:07"),
+	).toHaveValue("192.168.8.107");
+
+	const other = page.locator('[data-mac="aa:00:00:00:10:08"]');
+	await page.getByLabel("Name of aa:00:00:00:10:08").fill("watch-viktor");
+	await other.getByRole("button", { name: "Save" }).click();
+	await expect(other.getByRole("alert")).toContainText("another device's name");
+	expect(errors.filter((e) => !e.includes("409"))).toEqual([]);
+});

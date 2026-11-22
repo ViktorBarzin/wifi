@@ -21,6 +21,7 @@ import {
 	listDevices,
 	parseLeases,
 	readSyncState,
+	setName,
 	setRole,
 	sha256Hex,
 	storeLeases,
@@ -290,6 +291,8 @@ describe.skipIf(!adminUrl)("wifi with a database", () => {
 			ip: "192.168.8.50",
 			hostname: "new",
 			role: "iot",
+			name: null,
+			fixedIp: null,
 			lastSeen: expect.any(String),
 		});
 		expect(await findDeviceByIp(db(), "192.168.8.99")).toBeNull();
@@ -323,5 +326,123 @@ describe.skipIf(!adminUrl)("wifi with a database", () => {
 		await expect(
 			assignOwnDevice(db(), stranger, "192.168.8.60", null, null),
 		).rejects.toMatchObject({ status: 403 });
+	});
+	test("a name and a fixed address are set, changed and removed; each change bumps the version", async () => {
+		await storeLeases(db(), bytes("bb:00:00:00:00:01 192.168.8.70 Watch\n"));
+		const start = (await readSyncState(db())).rolesVersion;
+		const named = await setName(db(), {
+			mac: "bb:00:00:00:00:01",
+			name: "watch-viktor",
+			fixedIp: null,
+			setBy: "sub-1",
+			source: null,
+		});
+		expect(named).toEqual({ changed: true, version: start + 1 });
+		const same = await setName(db(), {
+			mac: "bb:00:00:00:00:01",
+			name: "watch-viktor",
+			fixedIp: null,
+			setBy: "sub-2",
+			source: null,
+		});
+		expect(same).toEqual({ changed: false, version: start + 1 });
+		const pinned = await setName(db(), {
+			mac: "bb:00:00:00:00:01",
+			name: "watch-viktor",
+			fixedIp: "192.168.8.70",
+			setBy: "sub-1",
+			source: null,
+		});
+		expect(pinned.version).toBe(start + 2);
+		expect(
+			(await listDevices(db())).find((d) => d.mac === "bb:00:00:00:00:01"),
+		).toMatchObject({
+			hostname: "Watch",
+			name: "watch-viktor",
+			fixedIp: "192.168.8.70",
+		});
+		const removed = await setName(db(), {
+			mac: "bb:00:00:00:00:01",
+			name: null,
+			fixedIp: null,
+			setBy: "sub-1",
+			source: null,
+		});
+		expect(removed.version).toBe(start + 3);
+		expect(
+			await database.client`select 1 from device_names where mac = 'bb:00:00:00:00:01'`,
+		).toEqual([]);
+	});
+
+	test("a name or fixed address that is malformed or held by another device is refused", async () => {
+		await storeLeases(
+			db(),
+			bytes(
+				"bb:00:00:00:00:02 192.168.8.71 *\nbb:00:00:00:00:03 192.168.8.72 *\n",
+			),
+		);
+		const name = (mac: string, n: string | null, fixedIp: string | null) =>
+			setName(db(), { mac, name: n, fixedIp, setBy: "s", source: null });
+		await name("bb:00:00:00:00:02", "plug-a", "192.168.8.80");
+		const start = (await readSyncState(db())).rolesVersion;
+		await expect(
+			name("bb:00:00:00:00:03", "plug-a", null),
+		).rejects.toMatchObject({ status: 409 });
+		await expect(
+			name("bb:00:00:00:00:03", "plug-b", "192.168.8.80"),
+		).rejects.toMatchObject({ status: 409 });
+		// .71 is leased to bb:..:02 right now.
+		await expect(
+			name("bb:00:00:00:00:03", "plug-b", "192.168.8.71"),
+		).rejects.toMatchObject({ status: 409 });
+		await expect(
+			name("bb:00:00:00:00:03", "Plug B", null),
+		).rejects.toMatchObject({ status: 422 });
+		await expect(
+			name("bb:00:00:00:00:03", "plug-b", "192.168.9.5"),
+		).rejects.toMatchObject({ status: 422 });
+		await expect(
+			name("bb:00:00:00:00:03", null, "192.168.8.90"),
+		).rejects.toMatchObject({ status: 422 });
+		expect((await readSyncState(db())).rolesVersion).toBe(start);
+		// A device may keep the address it holds now.
+		await name("bb:00:00:00:00:03", "plug-b", "192.168.8.72");
+	});
+
+	test("the format 2 poll lists every device with a role or a name: mac role name address", async () => {
+		await setRole(db(), {
+			mac: "bb:00:00:00:00:02",
+			role: "iot",
+			setBy: "s",
+			source: null,
+		});
+		const state = await readSyncState(db());
+		const body = await pollRoles(db(), {
+			since: state.rolesVersion - 1,
+			leases: state.leasesHash,
+			timeoutMs: 5_000,
+			format: 2,
+		});
+		const lines = body.split("\n");
+		expect(lines.slice(0, 2)).toEqual([
+			`version ${state.rolesVersion}`,
+			"leases ok",
+		]);
+		// Every line of the list, sorted by MAC; a role alone, a name alone and both.
+		expect(lines).toContain("aa:00:00:00:00:02 infra-k8s - -");
+		expect(lines).toContain("bb:00:00:00:00:02 iot plug-a 192.168.8.80");
+		expect(lines).toContain("bb:00:00:00:00:03 guest plug-b 192.168.8.72");
+		const macs = lines.slice(2, -1).map((line) => line.split(" ")[0] ?? "");
+		expect(macs).toEqual([...macs].sort());
+		expect(body.endsWith("\n")).toBe(true);
+
+		// The format 1 poll keeps its two-field role lines and leaves names out.
+		const v1 = await pollRoles(db(), {
+			since: state.rolesVersion - 1,
+			leases: state.leasesHash,
+			timeoutMs: 5_000,
+		});
+		expect(v1).toContain("bb:00:00:00:00:02 iot\n");
+		expect(v1).not.toContain("plug-b");
 	});
 });

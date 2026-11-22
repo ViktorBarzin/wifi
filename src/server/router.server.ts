@@ -10,6 +10,7 @@ import type { Db, Tx } from "./db.server";
 import { realtime } from "./realtime.server";
 import {
 	listRoles,
+	listRouterEntries,
 	markRouterPoll,
 	readSyncState,
 	type SyncState,
@@ -113,10 +114,13 @@ export interface PollOptions {
 	leases: string;
 	timeoutMs: number;
 	signal?: AbortSignal;
+	/** 1: `<mac> <role>` for devices with a role. 2: `<mac> <role|guest> <name|-> <fixed ip|->` for devices with a role or a name. */
+	format?: 1 | 2;
 }
 
 /**
- * The poll's text/plain body: `version <N>` and the full list, or
+ * The poll's text/plain body: `version <N>` and the full list (see
+ * PollOptions.format), or
  * `unchanged <N>`; then `leases needed` or `leases ok`. Every line ends in
  * `\n`, so busybox `read` sees the last one.
  */
@@ -133,7 +137,12 @@ export async function pollRoles(
 			? "leases ok"
 			: "leases needed",
 	];
-	if (changed)
+	if (changed && opts.format === 2)
+		for (const e of await listRouterEntries(db))
+			lines.push(
+				`${e.mac} ${e.role ?? "guest"} ${e.name ?? "-"} ${e.fixedIp ?? "-"}`,
+			);
+	else if (changed)
 		for (const { mac, role } of await listRoles(db))
 			lines.push(`${mac} ${role}`);
 	return lines.map((line) => `${line}\n`).join("");

@@ -226,25 +226,33 @@ infra path (infra `stacks/wifi`), never on Cloud: the router and the London
 proxy reach it there, so the template's Cloud-mode tests are removed.
 
 - **Tables** (`schema.server.ts`): `devices` (from the router's lease table,
-  never deleted), `device_roles` (no row: guest) and the one-row
-  `sync_state` (`roles_version`, `leases_hash`, `last_router_poll`).
-- **Role writes** (`setRole` in `wifi.server.ts`) bump `roles_version` and
-  publish on the realtime channel `wifi_roles` in the same transaction.
+  never deleted), `device_roles` (no row: guest), `device_names` (a name,
+  served as `<name>.viktorbarzin.lan`, and an optional fixed 192.168.8.x
+  address; both unique) and the one-row `sync_state` (`roles_version`,
+  `leases_hash`, `last_router_poll`).
+- **Role and name writes** (`setRole`, `setName` in `wifi.server.ts`) bump
+  `roles_version`, the version of the router's list, and publish on the
+  realtime channel `wifi_roles` in the same transaction. `setName` refuses
+  (409) a name or address another device has, or an address another device
+  leased in the last 24 h.
 - **Router API** (text/plain, `Authorization: Bearer $ROUTER_TOKEN`, 401
-  with no body otherwise): `GET /api/router/roles?since=<int>&leases=<sha256>`
+  with no body otherwise): `GET /api/router/roles?since=<int>&leases=<sha256>[&format=2]`
   is a long poll held up to `ROUTER_POLL_TIMEOUT_MS` (50 s). It answers at
   once when `roles_version` differs from `since`, else when a role write's
   NOTIFY arrives on the pod's one LISTEN connection (`router.server.ts`).
-  Body: `version <N>` plus `<mac> <role>` lines sorted by MAC, or
+  Body: `version <N>` plus the list sorted by MAC, or
   `unchanged <N>`; then `leases needed` or `leases ok`. Every line ends in
-  `\n`. `PUT /api/router/leases` takes `<mac> <ip> <hostname-or-*>` lines,
+  `\n`. The list in format 1 is `<mac> <role>` for devices with a role; in
+  format 2 (the router agent since 2026-11-22) it is
+  `<mac> <role|guest> <name|-> <fixed ip|->` for devices with a role or a
+  name. `PUT /api/router/leases` takes `<mac> <ip> <hostname-or-*>` lines,
   upserts `devices`, stores the body's SHA-256 and answers 204, or 400 with
   the first bad line.
 - **Pages**: `/` finds this device by `X-Real-IP` (the London proxy and
   Traefik both overwrite it) and lets a signed-in person give it their role
   (admins group: `admin`, users group: `storage`) or make it a guest
-  (`assignOwnDevice`). `/admin` lists every device with a role select;
-  admins only. `/admin/requests` is the template's.
+  (`assignOwnDevice`). `/admin` lists every device with a role select
+  and a name and fixed-address form; admins only. `/admin/requests` is the template's.
 - **Metrics**: `wifi_router_last_poll_timestamp_seconds` (read from
   `sync_state` at scrape time) and `wifi_role_changes_total`.
 - **Env** beyond the template's: `ROUTER_TOKEN` (or `ROUTER_TOKEN_FILE`),

@@ -20,6 +20,7 @@ import {
 	findDeviceByIp,
 	listDevices as listAllDevices,
 	normalizeMac,
+	setName,
 	setRole,
 } from "./wifi.server";
 
@@ -77,6 +78,30 @@ export const setDeviceRole = createServerFn({ method: "POST" })
 		await setRole(pool.getDb(), {
 			mac,
 			role: data.role,
+			setBy: user.sub ?? user.username,
+			source: sanitizeClientId(request.headers.get(CLIENT_ID_HEADER)),
+		});
+		return { ok: true as const };
+	});
+
+/** Set or remove any device's name and fixed address. Admins only. */
+export const setDeviceName = createServerFn({ method: "POST" })
+	.validator(
+		z.object({
+			mac: z.string().max(17),
+			name: z.string().max(63).nullable(),
+			fixedIp: z.string().max(15).nullable(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const request = getRequest();
+		const user = await requireAdmin(request);
+		const mac = normalizeMac(data.mac);
+		if (mac === null) throw new ApiError(422, "invalid", "bad mac");
+		await setName(pool.getDb(), {
+			mac,
+			name: data.name,
+			fixedIp: data.fixedIp,
 			setBy: user.sub ?? user.username,
 			source: sanitizeClientId(request.headers.get(CLIENT_ID_HEADER)),
 		});

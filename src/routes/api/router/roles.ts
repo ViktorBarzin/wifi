@@ -9,7 +9,7 @@ const SINCE = /^\d{1,15}$/;
 const SHA256_HEX = /^[0-9a-fA-F]{64}$/;
 
 /**
- * GET /api/router/roles?since=<version>&leases=<sha256 hex>: the London
+ * GET /api/router/roles?since=<version>&leases=<sha256 hex>[&format=2]: the London
  * router's long poll (text/plain, ROUTER_TOKEN bearer). Held up to
  * ROUTER_POLL_TIMEOUT_MS (50 s); every request may idle 255 s (start.ts).
  */
@@ -22,11 +22,20 @@ export const Route = createFileRoute("/api/router/roles")({
 				const query = new URL(request.url).searchParams;
 				const since = query.get("since") ?? "";
 				const leases = query.get("leases") ?? "";
-				if (!SINCE.test(since) || !SHA256_HEX.test(leases))
-					return plainText(400, "want ?since=<int>&leases=<sha256 hex>\n");
+				const format = query.get("format") ?? "1";
+				if (
+					!SINCE.test(since) ||
+					!SHA256_HEX.test(leases) ||
+					(format !== "1" && format !== "2")
+				)
+					return plainText(
+						400,
+						"want ?since=<int>&leases=<sha256 hex>[&format=1|2]\n",
+					);
 				const body = await pollRoles(pool.getDb(), {
 					since: Number(since),
 					leases,
+					format: format === "2" ? 2 : 1,
 					timeoutMs: routerPollTimeoutMs(),
 					signal: request.signal,
 				});

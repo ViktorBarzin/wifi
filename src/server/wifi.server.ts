@@ -1,6 +1,7 @@
 /**
- * The London Wi-Fi domain: the router's lease table, device roles and the
- * single sync_state row. Every role write bumps `roles_version` and sends a
+ * The London Wi-Fi domain: the router's lease table, device roles, device
+ * names and the single sync_state row. Every role or name write bumps
+ * `roles_version` (the version of the router's list) and sends a
  * NOTIFY on the app's realtime channel (`wifi_roles`) in its own
  * transaction, so the router's held poll wakes at COMMIT and a rolled-back
  * write wakes no one.
@@ -8,11 +9,17 @@
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { ApiError } from "@viktorbarzin/runtime";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 
+import { isDeviceName, isFixedAddress } from "#/lib/names";
 import { deviceKeys } from "#/lib/query-keys";
 import { mayAssignOwn, type Role, type Who } from "#/lib/roles";
-import { deviceRoles, devices, syncState } from "./db/schema.server";
+import {
+	deviceNames,
+	deviceRoles,
+	devices,
+	syncState,
+} from "./db/schema.server";
 import type { Db, Tx } from "./db.server";
 import { wifiMetrics } from "./metrics.server";
 import { realtime } from "./realtime.server";
@@ -149,6 +156,22 @@ export interface RoleChange {
 	source: string | null;
 }
 
+/** Bump the router list's version and notify the held polls and open pages, inside `tx`. */
+async function bumpVersion(tx: Tx, source: string | null): Promise<number> {
+	const [row] = await tx
+		.update(syncState)
+		.set({ rolesVersion: sql`${syncState.rolesVersion} + 1` })
+		.where(eq(syncState.id, 1))
+		.returning({ version: syncState.rolesVersion });
+	if (!row) throw new Error("sync_state has no row; run the migrations");
+	await realtime.publishInTx(tx, null, {
+		type: "invalidate",
+		keys: [deviceKeys.all],
+		source,
+	});
+	return row.version;
+}
+
 /** Set or clear a device's role. A change bumps the version and notifies in the same transaction. */
 export async function setRole(
 	db: Db | Tx,
@@ -174,18 +197,7 @@ export async function setRole(
 		}
 		if (!changed)
 			return { changed, version: (await readSyncState(tx)).rolesVersion };
-		const [row] = await tx
-			.update(syncState)
-			.set({ rolesVersion: sql`${syncState.rolesVersion} + 1` })
-			.where(eq(syncState.id, 1))
-			.returning({ version: syncState.rolesVersion });
-		if (!row) throw new Error("sync_state has no row; run the migrations");
-		await realtime.publishInTx(tx, null, {
-			type: "invalidate",
-			keys: [deviceKeys.all],
-			source: change.source,
-		});
-		return { changed, version: row.version };
+		return { changed, version: await bumpVersion(tx, change.source) };
 	});
 	if (result.changed) wifiMetrics().roleChanges.inc();
 	return result;
@@ -201,12 +213,135 @@ export async function listRoles(
 	return rows.sort((a, b) => (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0));
 }
 
+export interface NameChange {
+	mac: string;
+	/** null: remove the name (and the fixed address). */
+	name: string | null;
+	/** null: the router gives any free address. */
+	fixedIp: string | null;
+	/** The acting person's OIDC `sub`. */
+	setBy: string;
+	/** The writing tab's client id, so that tab skips its own event. */
+	source: string | null;
+}
+
+/** A lease older than this no longer holds its address (the router's leases last 12 h). */
+const LEASE_HELD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Set or remove a device's name and fixed address. A name or address that
+ * another device has, or an address another device is leasing now, is a 409.
+ */
+export async function setName(
+	db: Db | Tx,
+	change: NameChange,
+): Promise<{ changed: boolean; version: number }> {
+	const { mac, name, fixedIp } = change;
+	if (name === null && fixedIp !== null)
+		throw new ApiError(422, "invalid", "a fixed address needs a name");
+	if (name !== null && !isDeviceName(name))
+		throw new ApiError(
+			422,
+			"invalid",
+			"a name is lowercase letters, digits and dashes, at most 63",
+		);
+	if (fixedIp !== null && !isFixedAddress(fixedIp))
+		throw new ApiError(
+			422,
+			"invalid",
+			"a fixed address is 192.168.8.2 to 192.168.8.254",
+		);
+	return db.transaction(async (tx) => {
+		const [current] = await tx
+			.select({ name: deviceNames.name, fixedIp: deviceNames.fixedIp })
+			.from(deviceNames)
+			.where(eq(deviceNames.mac, mac));
+		const unchanged = async () => ({
+			changed: false,
+			version: (await readSyncState(tx)).rolesVersion,
+		});
+		if (name === null) {
+			if (!current) return unchanged();
+			await tx.delete(deviceNames).where(eq(deviceNames.mac, mac));
+			return { changed: true, version: await bumpVersion(tx, change.source) };
+		}
+		if (current?.name === name && current.fixedIp === fixedIp)
+			return unchanged();
+		const [named] = await tx
+			.select({ mac: deviceNames.mac })
+			.from(deviceNames)
+			.where(and(eq(deviceNames.name, name), ne(deviceNames.mac, mac)));
+		if (named)
+			throw new ApiError(409, "conflict", `${name} is another device's name`);
+		if (fixedIp !== null) {
+			const [pinned] = await tx
+				.select({ mac: deviceNames.mac })
+				.from(deviceNames)
+				.where(and(eq(deviceNames.fixedIp, fixedIp), ne(deviceNames.mac, mac)));
+			const holder = await findDeviceByIp(tx, fixedIp);
+			const leased =
+				holder !== null &&
+				holder.mac !== mac &&
+				Date.parse(holder.lastSeen) > Date.now() - LEASE_HELD_MS;
+			if (pinned || leased)
+				throw new ApiError(
+					409,
+					"conflict",
+					`${fixedIp} belongs to another device`,
+				);
+		}
+		await tx
+			.insert(deviceNames)
+			.values({ mac, name, fixedIp, setBy: change.setBy })
+			.onConflictDoUpdate({
+				target: deviceNames.mac,
+				set: { name, fixedIp, setBy: change.setBy, setAt: sql`now()` },
+			});
+		return { changed: true, version: await bumpVersion(tx, change.source) };
+	});
+}
+
+export interface RouterEntry {
+	mac: string;
+	role: Role | null;
+	name: string | null;
+	fixedIp: string | null;
+}
+
+/** Every device with a role or a name, sorted by MAC (byte order). */
+export async function listRouterEntries(db: Db | Tx): Promise<RouterEntry[]> {
+	const entries = new Map<string, RouterEntry>();
+	const entry = (mac: string): RouterEntry => {
+		let e = entries.get(mac);
+		if (!e) {
+			e = { mac, role: null, name: null, fixedIp: null };
+			entries.set(mac, e);
+		}
+		return e;
+	};
+	for (const { mac, role } of await listRoles(db)) entry(mac).role = role;
+	const names = await db
+		.select({
+			mac: deviceNames.mac,
+			name: deviceNames.name,
+			fixedIp: deviceNames.fixedIp,
+		})
+		.from(deviceNames);
+	for (const { mac, name, fixedIp } of names)
+		Object.assign(entry(mac), { name, fixedIp });
+	return [...entries.values()].sort((a, b) =>
+		a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0,
+	);
+}
+
 /** The wire shape: dates as ISO strings. */
 export interface DeviceView {
 	mac: string;
 	ip: string;
 	hostname: string | null;
 	role: Role | null;
+	name: string | null;
+	fixedIp: string | null;
 	lastSeen: string;
 }
 
@@ -217,19 +352,18 @@ function deviceQuery(db: Db | Tx) {
 			ip: devices.ip,
 			hostname: devices.hostname,
 			role: deviceRoles.role,
+			name: deviceNames.name,
+			fixedIp: deviceNames.fixedIp,
 			lastSeen: devices.lastSeen,
 		})
 		.from(devices)
-		.leftJoin(deviceRoles, eq(deviceRoles.mac, devices.mac));
+		.leftJoin(deviceRoles, eq(deviceRoles.mac, devices.mac))
+		.leftJoin(deviceNames, eq(deviceNames.mac, devices.mac));
 }
 
-function view(row: {
-	mac: string;
-	ip: string;
-	hostname: string | null;
-	role: Role | null;
-	lastSeen: Date;
-}): DeviceView {
+function view(
+	row: Omit<DeviceView, "lastSeen"> & { lastSeen: Date },
+): DeviceView {
 	return { ...row, lastSeen: row.lastSeen.toISOString() };
 }
 

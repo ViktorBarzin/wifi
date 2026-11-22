@@ -29,6 +29,13 @@
       "when": 1795362924125,
       "tag": "0003_drop_items",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795377153565,
+      "tag": "0004_device_names",
+      "breakpoints": true
     }
   ]
 }
