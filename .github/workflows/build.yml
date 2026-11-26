@@ -12,9 +12,12 @@ name: Build and Push
 #   repo variables WOODPECKER_REPO_ID and FORGEJO_REPO; secrets WOODPECKER_TOKEN,
 #   FORGEJO_GIT_TOKEN, SLACK_WEBHOOK.
 on:
-  push:
-    branches: [master]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label. Woodpecker's ci-route sets it (infra ci/route).
+        type: string
+        default: ubuntu-latest
 
 # Read-only by default; only the image build job below can push to ghcr.
 permissions:
@@ -26,7 +29,7 @@ env:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     permissions:
       contents: read
     services:
@@ -94,7 +97,7 @@ jobs:
     needs: lint-and-test
     # viktor/app-template itself only tests; an app made from it builds and deploys.
     if: github.repository != 'ViktorBarzin/app-template'
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -188,7 +191,7 @@ jobs:
   notify-failure:
     needs: [lint-and-test, build]
     if: failure()
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     permissions: {}
     steps:
       - name: Slack notify
