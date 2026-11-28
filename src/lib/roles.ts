@@ -45,7 +45,12 @@ export function mayAssignOwn(who: Who, role: Role | null): boolean {
 export const ROLE_ACCESS: Record<Role | "guest", readonly string[]> = {
 	admin: ["all of Sofia"],
 	"infra-k8s": ["the Kubernetes network"],
-	"infra-ha": ["NAS backups", "journal upload", "vacuum camera", "history database"],
+	"infra-ha": [
+		"NAS backups",
+		"journal upload",
+		"vacuum camera",
+		"history database",
+	],
 	media: ["the cluster's web services"],
 	storage: ["the file share"],
 	iot: [],
